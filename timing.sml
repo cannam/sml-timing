@@ -21,13 +21,30 @@ structure Timing : TIMING = struct
                                 end)
 
     exception InternalError
-                              
-    val aggregates : Time.time H.hash_table = H.mkTable (200, InternalError)
+
+    type time_rec = {
+        total : Time.time,
+        min : Time.time,
+        max : Time.time,
+        count : int
+    }
+                  
+    val aggregates : time_rec H.hash_table = H.mkTable (200, InternalError)
 
     fun record tag t =
         case H.find aggregates tag of
-            NONE => H.insert aggregates (tag, t)
-          | SOME t' => H.insert aggregates (tag, Time.+ (t, t'))
+            NONE =>
+            H.insert aggregates
+                     (tag, { total = t,
+                             min = t,
+                             max = t,
+                             count = 1 })
+          | SOME { total, min, max, count } =>
+            H.insert aggregates
+                     (tag, { total = Time.+ (total, t),
+                             min = if Time.< (t, min) then t else min,
+                             max = if Time.> (t, max) then t else max,
+                             count = count + 1 })
                                
     fun timed tag f =
         let val start = Time.now ()
@@ -43,11 +60,21 @@ structure Timing : TIMING = struct
         end
 
     fun summarise () =
-        (Log.info (fn () => ["Aggregate times:"]);
-         H.appi (fn (tag, elapsed) =>
-                    Log.info
-                        (fn () => ["%: % ms", tag,
-                                   Log.R (Time.toReal elapsed * 1000.0)]))
-                aggregates)
+        let open Log
+        in
+            (info (fn () => ["Aggregate times:"]);
+             H.appi (fn (tag, { total, min, max, count }) =>
+                        info (fn () => ["%: total % ms, min %, max %, average % (% / sec)",
+                                        tag,
+                                        R (Time.toReal total * 1000.0),
+                                        R (Time.toReal min * 1000.0),
+                                        R (Time.toReal max * 1000.0),
+                                        R ((Time.toReal total * 1000.0) /
+                                           Real.fromInt count),
+                                        R (Real.fromInt count /
+                                           (*!!! fix: blow up if total = 0 *)
+                                           Time.toReal total)]))
+                    aggregates)
+        end
             
 end
