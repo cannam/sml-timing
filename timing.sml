@@ -15,12 +15,12 @@ structure Timing : TIMING = struct
         end
 
     structure H = HashTableFn (struct
-                                type hash_key = string
+                                type hash_key = tag
                                 val hashVal = hashString
                                 val sameKey = op=
                                 end)
 
-    exception InternalError
+    exception NotFound
 
     type time_rec = {
         total : Time.time,
@@ -29,41 +29,53 @@ structure Timing : TIMING = struct
         count : int
     }
                   
-    val aggregates : time_rec H.hash_table = H.mkTable (200, InternalError)
-
+    val aggregates : time_rec H.hash_table = H.mkTable (200, NotFound)
+    val recordOrder : tag list ref = ref []
+                                                       
     fun record tag t =
         case H.find aggregates tag of
             NONE =>
-            H.insert aggregates
-                     (tag, { total = t,
-                             min = t,
-                             max = t,
-                             count = 1 })
+            (recordOrder := tag :: (!recordOrder);
+             H.insert aggregates
+                      (tag, { total = t,
+                              min = t,
+                              max = t,
+                              count = 1 }))
           | SOME { total, min, max, count } =>
             H.insert aggregates
                      (tag, { total = Time.+ (total, t),
                              min = if Time.< (t, min) then t else min,
                              max = if Time.> (t, max) then t else max,
                              count = count + 1 })
-                               
+
+    val mu = String.implode [Char.chr 0xCE, Char.chr 0xBC]
+    fun toUsReal t = Time.toReal t * 1000000.0
+                                         
     fun timed tag f =
-        let val start = Time.now ()
+        let open Log
+            val start = Time.now ()
             val result = f ()
             val finish = Time.now ()
             val elapsed = Time.- (finish, start)
             val () = record tag elapsed
+            val usElapsed = toUsReal elapsed
             val () = Log.debug
-                         (fn () => ["%: % ms", tag,
-                                    Log.R (Time.toReal elapsed * 1000.0)])
+                         (fn () =>
+                             ["%: %%s (%/s)",
+                              tag,
+                              N usElapsed, mu,
+                              if usElapsed > 0.0
+                              then N (1000000.0 / usElapsed)
+                              else "-"
+                         ])
         in
             result
         end
 
     fun summarise level =
         let open Log
-            val mu = String.implode [Char.chr 0xCE, Char.chr 0xBC]
-            fun summariseOne (tag, { total, min, max, count }) =
-                let fun toUsReal t = Time.toReal t * 1000000.0
+            fun summariseOne tag =
+                let val { total, min, max, count } = H.lookup aggregates tag
                     val usTotal = toUsReal total
                     val usMax = toUsReal max
                 in
@@ -73,15 +85,17 @@ structure Timing : TIMING = struct
                              tag,
                              N (usTotal / Real.fromInt count), mu,
                              if usTotal > 0.0
-                             then R (Real.fromInt count * 1000000.0 / usTotal)
+                             then N (Real.fromInt count * 1000000.0 / usTotal)
                              else "-",
                              N usMax, mu,
                              N usTotal, mu
                         ])
                 end
+                handle NotFound =>
+                       Log.warn (fn () => ["tag % not found in aggregates", tag])
         in
-            (log level (fn () => ["Aggregate times:"]);
-             H.appi summariseOne aggregates)
+            (log level (fn () => ["Aggregate times in order of appearance:"]);
+             List.app summariseOne (rev (!recordOrder)))
         end
             
 end
