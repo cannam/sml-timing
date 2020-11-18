@@ -3,8 +3,8 @@ structure Timing : TIMING = struct
 
     type tag = string
 
-    fun hashChar (c : char, h : Word32.word) : Word32.word =
-        Word32.<<(h, 0w5) + h + 0w720 + (Word32.fromInt (Char.ord c))
+    fun hashChar (c : char, h : Word.word) : Word.word =
+        Word.<<(h, 0w5) + h + 0w720 + (Word.fromInt (Char.ord c))
 
     fun hashString s =
         let fun hash (~1, h) = h
@@ -59,22 +59,29 @@ structure Timing : TIMING = struct
             result
         end
 
-    fun summarise () =
+    fun summarise level =
         let open Log
+            val mu = String.implode [Char.chr 0xCE, Char.chr 0xBC]
+            fun summariseOne (tag, { total, min, max, count }) =
+                let fun toUsReal t = Time.toReal t * 1000000.0
+                    val usTotal = toUsReal total
+                    val usMax = toUsReal max
+                in
+                    log level
+                        (fn () =>
+                            ["%: mean %%s (%/s), worst %%s, total %%s",
+                             tag,
+                             N (usTotal / Real.fromInt count), mu,
+                             if usTotal > 0.0
+                             then R (Real.fromInt count * 1000000.0 / usTotal)
+                             else "-",
+                             N usMax, mu,
+                             N usTotal, mu
+                        ])
+                end
         in
-            (info (fn () => ["Aggregate times:"]);
-             H.appi (fn (tag, { total, min, max, count }) =>
-                        info (fn () => ["%: total % ms, min %, max %, average % (% / sec)",
-                                        tag,
-                                        R (Time.toReal total * 1000.0),
-                                        R (Time.toReal min * 1000.0),
-                                        R (Time.toReal max * 1000.0),
-                                        R ((Time.toReal total * 1000.0) /
-                                           Real.fromInt count),
-                                        R (Real.fromInt count /
-                                           (*!!! fix: blow up if total = 0 *)
-                                           Time.toReal total)]))
-                    aggregates)
+            (log level (fn () => ["Aggregate times:"]);
+             H.appi summariseOne aggregates)
         end
             
 end

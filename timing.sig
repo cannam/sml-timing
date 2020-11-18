@@ -7,6 +7,6 @@ signature TIMING = sig
 
     val record : tag -> Time.time -> unit
 
-    val summarise : unit -> unit
+    val summarise : Log.level -> unit
                                            
 end
