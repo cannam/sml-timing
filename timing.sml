@@ -48,7 +48,7 @@ structure Timing : TIMING = struct
                              max = if Time.> (t, max) then t else max,
                              count = count + 1 })
 
-    val mu = String.implode [Char.chr 0xCE, Char.chr 0xBC]
+    val mu = implode [chr 0xCE, chr 0xBC]
     fun toUsReal t = Time.toReal t * 1000000.0
                                          
     fun timed tag f =
