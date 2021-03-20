@@ -61,7 +61,7 @@ structure Timing : TIMING = struct
             val usElapsed = toUsReal elapsed
             val () = Log.debug
                          (fn () =>
-                             ["%: %%s (%/s)",
+                             ["%1: %2%3s (%4/s)",
                               tag,
                               N usElapsed, mu,
                               if usElapsed > 0.0
@@ -81,7 +81,7 @@ structure Timing : TIMING = struct
                 in
                     log level
                         (fn () =>
-                            ["%: mean %%s (%/s), worst %%s, total %%s",
+                            ["%1: mean %2%3s (%4/s), worst %5%6s, total %7%8s",
                              tag,
                              N (usTotal / Real.fromInt count), mu,
                              if usTotal > 0.0
@@ -92,7 +92,7 @@ structure Timing : TIMING = struct
                         ])
                 end
                 handle NotFound =>
-                       Log.warn (fn () => ["tag % not found in aggregates", tag])
+                       Log.warn (fn () => ["tag %1 not found in aggregates", tag])
         in
             (log level (fn () => ["Aggregate times in order of appearance:"]);
              List.app summariseOne (rev (!recordOrder)))
