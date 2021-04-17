@@ -78,17 +78,21 @@ structure Timing : TIMING = struct
                 let val { total, min, max, count } = H.lookup aggregates tag
                     val usTotal = toUsReal total
                     val usMax = toUsReal max
+                    fun number r =
+                        if Real.>= (r, 100.0)
+                        then I (Real.round r)
+                        else N r
                 in
                     log level
                         (fn () =>
                             ["%1: mean %2%3s (%4/s), worst %5%6s, total %7%8s",
                              tag,
-                             N (usTotal / Real.fromInt count), mu,
+                             number (usTotal / Real.fromInt count), mu,
                              if usTotal > 0.0
-                             then N (Real.fromInt count * 1000000.0 / usTotal)
+                             then number (Real.fromInt count * 1000000.0 / usTotal)
                              else "-",
-                             N usMax, mu,
-                             N usTotal, mu
+                             number usMax, mu,
+                             number usTotal, mu
                         ])
                 end
                 handle NotFound =>
