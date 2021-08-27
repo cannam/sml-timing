@@ -50,27 +50,7 @@ structure Timing : TIMING = struct
 
     val mu = implode [chr 0xCE, chr 0xBC]
     fun toUsReal t = Time.toReal t * 1000000.0
-                                         
-    fun timed tag f =
-        let open Log
-            val start = Time.now ()
-            val result = f ()
-            val finish = Time.now ()
-            val elapsed = Time.- (finish, start)
-            val () = record tag elapsed
-            val usElapsed = toUsReal elapsed
-            val () = Log.debug
-                         (fn () =>
-                             ["%1: %2%3s (%4/s)",
-                              tag,
-                              N usElapsed, mu,
-                              if usElapsed > 0.0
-                              then N (1000000.0 / usElapsed)
-                              else "-"
-                         ])
-        in
-            result
-        end
+    fun usPerSecStr u = if u > 0.0 then Log.N (1000000.0 / u) else "-"
 
     fun summarise level =
         let open Log
@@ -100,6 +80,52 @@ structure Timing : TIMING = struct
         in
             (log level (fn () => ["Aggregate times in order of appearance:"]);
              List.app summariseOne (rev (!recordOrder)))
+        end
+                                                                       
+    fun timed tag f =
+        let open Log
+            val start = Time.now ()
+            val result = f ()
+            val finish = Time.now ()
+            val elapsed = Time.- (finish, start)
+            val () = record tag elapsed
+            val usElapsed = toUsReal elapsed
+            val () = Log.debug
+                         (fn () =>
+                             ["%1: %2%3s (%4/s)",
+                              tag,
+                              N usElapsed, mu, usPerSecStr usElapsed
+                         ])
+        in
+            result
+        end
+                                         
+    fun timedToBudget (tag, budget) f =
+        let open Log
+            val start = Time.now ()
+            val result = f ()
+            val finish = Time.now ()
+            val elapsed = Time.- (finish, start)
+            val () = record tag elapsed
+            val usElapsed = toUsReal elapsed
+            val () = Log.debug
+                         (fn () =>
+                             ["%1: %2%3s (%4/s)",
+                              tag,
+                              N usElapsed, mu, usPerSecStr usElapsed
+                         ])
+            val usBudget = toUsReal budget
+            val () = if Time.> (elapsed, budget)
+                     then Log.warn
+                              (fn () =>
+                                  ["%1: exceeded budget of %2%3s with elapsed time of %4%5s (%6/s)",
+                                   tag,
+                                   N usBudget, mu,
+                                   N usElapsed, mu, usPerSecStr usElapsed
+                              ])
+                     else ()
+        in
+            result
         end
             
 end
