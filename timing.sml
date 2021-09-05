@@ -116,14 +116,15 @@ structure Timing : TIMING = struct
                          ])
             val usBudget = toUsReal budget
             val () = if Time.> (elapsed, budget)
-                     then Log.warn
-                              (fn () =>
-                                  ["%1: exceeded budget of %2%3s with elapsed time of %4%5s (%6/s)",
-                                   tag,
-                                   N usBudget, mu,
-                                   N usElapsed, mu, usPerSecStr usElapsed
-                              ])
-                     else ()
+                     then (Log.warn
+                               (fn () =>
+                                   ["%1: exceeded budget of %2%3s with elapsed time of %4%5s (%6/s)",
+                                    tag,
+                                    N usBudget, mu,
+                                    N usElapsed, mu, usPerSecStr usElapsed
+                               ]);
+                           summarise Log.WARN)
+                      else ();
         in
             result
         end
