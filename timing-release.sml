@@ -9,6 +9,7 @@ structure Timing : TIMING = struct
 
     fun record tag t = ()
     fun timed tag f = f ()
+    fun timedToBudget (tag, budget) f = f ()
     fun summarise level = ()
             
 end
