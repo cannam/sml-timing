@@ -26,60 +26,101 @@ structure Timing : TIMING = struct
         total : Time.time,
         min : Time.time,
         max : Time.time,
+        last : Time.time,
+        updated : Time.time,
         count : int
     }
                   
     val aggregates : time_rec H.hash_table = H.mkTable (200, NotFound)
-    val recordOrder : tag list ref = ref []
+    val summaryOrder : tag list ref = ref []
                                                        
-    fun record tag t =
+    fun recordAt tag (t, finishedAt) =
         case H.find aggregates tag of
             NONE =>
-            (recordOrder := tag :: (!recordOrder);
+            (summaryOrder := ListMergeSort.sort String.>
+                             (tag :: (!summaryOrder));
              H.insert aggregates
                       (tag, { total = t,
                               min = t,
                               max = t,
+                              last = t,
+                              updated = finishedAt,
                               count = 1 }))
-          | SOME { total, min, max, count } =>
+          | SOME { total, min, max, last, updated, count } =>
             H.insert aggregates
                      (tag, { total = Time.+ (total, t),
                              min = if Time.< (t, min) then t else min,
                              max = if Time.> (t, max) then t else max,
+                             last = t,
+                             updated = finishedAt,
                              count = count + 1 })
+
+    fun record tag t =
+        recordAt tag (t, Time.now ())
 
     val mu = implode [chr 0xCE, chr 0xBC]
     fun toUsReal t = Time.toReal t * 1000000.0
     fun usPerSecStr u = if u > 0.0 then Log.N (1000000.0 / u) else "-"
+    fun spaces n = String.concat (List.tabulate (n, fn _ => " "))
+                                                                       
+    fun formatTime t =
+        let val us = toUsReal t
+            fun str r = if Real.>= (r, 100.0)
+                        then Log.I (Real.round r)
+                        else Log.N r
+            val ustr = str us
+        in
+            ustr ^ " " ^ mu ^ "s"
+        end
+                                                                       
+    fun formatTimePadded t =
+        let val us = toUsReal t
+            fun alignWidth r = if Real.>= (r, 1.0)
+                               then #exp (Real.toDecimal r)
+                               else 1
+            val str = formatTime t
+            val alignAt = alignWidth us
+            val padTo = 12
+            val padding = if padTo > alignAt
+                          then spaces (padTo - alignAt)
+                          else ""
+        in
+            padding ^ str
+        end
 
+    fun formatTimePerSec t =
+        let val us = toUsReal t
+        in
+            usPerSecStr us ^ " /sec"
+        end
+                                                                       
     fun summarise level =
         let open Log
             fun summariseOne tag =
-                let val { total, min, max, count } = H.lookup aggregates tag
-                    val usTotal = toUsReal total
-                    val usMax = toUsReal max
-                    fun number r =
-                        if Real.>= (r, 100.0)
-                        then I (Real.round r)
-                        else N r
+                let val { total, min, max, count, ... } =
+                        H.lookup aggregates tag
+                    val mean = Time.fromReal (Time.toReal total / real count)
                 in
-                    log level
-                        (fn () =>
-                            ["%1: mean %2%3s (%4/s), worst %5%6s, total %7%8s",
-                             tag,
-                             number (usTotal / Real.fromInt count), mu,
-                             if usTotal > 0.0
-                             then number (Real.fromInt count * 1000000.0 / usTotal)
-                             else "-",
-                             number usMax, mu,
-                             number usTotal, mu
-                        ])
+                    log level (fn () => [tag]);
+                    log level (fn () => ["%1 total (%2 %3)",
+                                         formatTimePadded total,
+                                         I count,
+                                         if count = 1 then "call" else "calls"]);
+                    if count > 1
+                    then (log level (fn () => ["%1 worst-case (%2)",
+                                               formatTimePadded max,
+                                               formatTimePerSec max]);
+                          log level (fn () => ["%1 mean (%2)",
+                                               formatTimePadded mean,
+                                               formatTimePerSec mean])
+                         )
+                    else ()
                 end
                 handle NotFound =>
-                       Log.warn (fn () => ["tag %1 not found in aggregates", tag])
+                       warn (fn () => ["tag %1 not found in aggregates", tag])
         in
-            (log level (fn () => ["Aggregate times in order of appearance:"]);
-             List.app summariseOne (rev (!recordOrder)))
+            log level (fn () => ["Aggregate times:"]);
+            List.app summariseOne (!summaryOrder)
         end
                                                                        
     fun timed tag f =
@@ -88,17 +129,54 @@ structure Timing : TIMING = struct
             val result = f ()
             val finish = Time.now ()
             val elapsed = Time.- (finish, start)
-            val () = record tag elapsed
-            val usElapsed = toUsReal elapsed
+            val () = recordAt tag (elapsed, finish)
             val () = Log.debug
                          (fn () =>
-                             ["%1: %2%3s (%4/s)",
+                             ["%1: %2 (%3)",
                               tag,
-                              N usElapsed, mu, usPerSecStr usElapsed
+                              formatTime elapsed,
+                              formatTimePerSec elapsed
                          ])
         in
             result
         end
+                                                                       
+    fun summariseWhenBudgetBlown level elapsed =
+        let open Log
+            val now = Time.now ()
+            fun summariseOne tag =
+                let val { total, last, updated, count, ... } =
+                        H.lookup aggregates tag
+                    val mean = Time.fromReal (Time.toReal total / real count)
+                    val ago = Time.- (now, updated)
+                in
+                    if Time.< (ago, elapsed)
+                    then (log level (fn () => [tag]);
+                          log level (fn () => ["%1 last (completed %2 ago)",
+                                               formatTimePadded last,
+                                               formatTime ago]);
+                          log level (fn () => ["%1 mean (%2 %3)",
+                                               formatTimePadded mean,
+                                               I count,
+                                               if count = 1
+                                               then "call"
+                                               else "calls"]))
+                    else ()
+                end
+                handle NotFound =>
+                       warn (fn () => ["tag %1 not found in aggregates", tag])
+        in
+            log level (fn () => ["Calls completing within last %1, by descending last-call duration:",
+                                 formatTime elapsed]);
+            List.app summariseOne
+                     (ListMergeSort.sort
+                          (fn (t1, t2) =>
+                              Time.< (#last (H.lookup aggregates t1),
+                                      #last (H.lookup aggregates t2)))
+                          (! summaryOrder))
+        end
+        handle NotFound =>
+               Log.warn (fn () => ["tag in summaryOrder not found in aggregates"])
                                          
     fun timedToBudget (tag, budget) f =
         let open Log
@@ -106,24 +184,29 @@ structure Timing : TIMING = struct
             val result = f ()
             val finish = Time.now ()
             val elapsed = Time.- (finish, start)
-            val () = record tag elapsed
-            val usElapsed = toUsReal elapsed
+            val () = recordAt tag (elapsed, finish)
             val () = Log.debug
                          (fn () =>
-                             ["%1: %2%3s (%4/s)",
+                             ["%1: %2 (%3)",
                               tag,
-                              N usElapsed, mu, usPerSecStr usElapsed
+                              formatTime elapsed,
+                              formatTimePerSec elapsed
                          ])
-            val usBudget = toUsReal budget
             val () = if Time.> (elapsed, budget)
                      then (Log.warn
                                (fn () =>
-                                   ["%1: exceeded budget of %2%3s with elapsed time of %4%5s (%6/s)",
+                                   ["%1: elapsed time of %2 (%3) %4 budget of %5 (%6)",
                                     tag,
-                                    N usBudget, mu,
-                                    N usElapsed, mu, usPerSecStr usElapsed
+                                    formatTime elapsed,
+                                    formatTimePerSec elapsed,
+                                    if Time.toReal elapsed >
+                                       Time.toReal budget * 10.0
+                                    then "wildly exceeds"
+                                    else "exceeds",
+                                    formatTime budget,
+                                    formatTimePerSec budget
                                ]);
-                           summarise Log.WARN)
+                           summariseWhenBudgetBlown Log.WARN elapsed)
                       else ();
         in
             result
