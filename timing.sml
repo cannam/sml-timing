@@ -152,9 +152,10 @@ structure Timing : TIMING = struct
                 in
                     if Time.< (ago, elapsed)
                     then (log level (fn () => [tag]);
-                          log level (fn () => ["%1 last (completed %2 ago)",
+                          log level (fn () => ["%1 last (completed %2 ago; %3)",
                                                formatTimePadded last,
-                                               formatTime ago]);
+                                               formatTime ago,
+                                               formatTimePerSec last]);
                           log level (fn () => ["%1 mean (%2 %3)",
                                                formatTimePadded mean,
                                                I count,
