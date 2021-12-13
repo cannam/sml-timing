@@ -20,6 +20,10 @@ structure Timing : TIMING = struct
                                 val sameKey = op=
                                 end)
 
+    structure Log = CategoryLogFn (struct
+                                    val category = "timing"
+                                    end)
+                              
     exception NotFound
 
     type time_rec = {
