@@ -1,4 +1,10 @@
 
+signature TIMING_FORMAT = sig
+    val formatElapsedTime : Time.time -> string
+    val formatElapsedTimePadded : int -> Time.time -> string
+    val formatElapsedTimePerSec : Time.time -> string
+end
+
 (** Call a function and log how long it takes. Remembers the timings
     to report on in an aggregated summary, and can optionally also log
     immediately on function return.

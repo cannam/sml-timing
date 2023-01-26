@@ -1,4 +1,41 @@
+structure TimingFormat : TIMING_FORMAT = struct
 
+    val mu = implode [chr 0xCE, chr 0xBC]
+    fun toUsReal t = Time.toReal t * 1000000.0
+    fun usPerSecStr u = if u > 0.0 then Log.N (1000000.0 / u) else "-"
+    fun spaces n = String.concat (List.tabulate (n, fn _ => " "))
+                                                                       
+    fun formatElapsedTime t =
+        let val us = toUsReal t
+            fun str r = if Real.>= (r, 100.0)
+                        then Log.I (Real.round r)
+                        else Log.N r
+            val ustr = str us
+        in
+            ustr ^ " " ^ mu ^ "s"
+        end
+                                                                       
+    fun formatElapsedTimePadded padTo t =
+        let val us = toUsReal t
+            fun alignWidth r = if Real.>= (r, 1.0)
+                               then #exp (Real.toDecimal r)
+                               else 1
+            val str = formatElapsedTime t
+            val alignAt = alignWidth us
+            val padding = if padTo > alignAt
+                          then spaces (padTo - alignAt)
+                          else ""
+        in
+            padding ^ str
+        end
+
+    fun formatElapsedTimePerSec t =
+        let val us = toUsReal t
+        in
+            usPerSecStr us ^ " /sec"
+        end
+end
+                                             
 structure Timing : TIMING = struct
 
     type tag = string
@@ -62,42 +99,10 @@ structure Timing : TIMING = struct
     fun record tag t =
         recordAt tag (t, Time.now ())
 
-    val mu = implode [chr 0xCE, chr 0xBC]
-    fun toUsReal t = Time.toReal t * 1000000.0
-    fun usPerSecStr u = if u > 0.0 then Log.N (1000000.0 / u) else "-"
-    fun spaces n = String.concat (List.tabulate (n, fn _ => " "))
-                                                                       
-    fun formatTime t =
-        let val us = toUsReal t
-            fun str r = if Real.>= (r, 100.0)
-                        then Log.I (Real.round r)
-                        else Log.N r
-            val ustr = str us
-        in
-            ustr ^ " " ^ mu ^ "s"
-        end
-                                                                       
-    fun formatTimePadded t =
-        let val us = toUsReal t
-            fun alignWidth r = if Real.>= (r, 1.0)
-                               then #exp (Real.toDecimal r)
-                               else 1
-            val str = formatTime t
-            val alignAt = alignWidth us
-            val padTo = 12
-            val padding = if padTo > alignAt
-                          then spaces (padTo - alignAt)
-                          else ""
-        in
-            padding ^ str
-        end
-
-    fun formatTimePerSec t =
-        let val us = toUsReal t
-        in
-            usPerSecStr us ^ " /sec"
-        end
-                                                                       
+    val formatTime = TimingFormat.formatElapsedTime
+    val formatTimePadded = TimingFormat.formatElapsedTimePadded 12
+    val formatTimePerSec = TimingFormat.formatElapsedTimePerSec
+                 
     fun summarise level =
         let open Log
             fun summariseOne tag =
